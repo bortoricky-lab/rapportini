@@ -447,7 +447,17 @@ function endWork(){
   S.screen='preview'; render();
 }
 function goPreview(){ S.screen='preview'; render(); }
-function confirmSend(){ sendEmail(); S.screen='sent'; render(); }
+
+function confirmSend(){
+  sendEmail();          // apre client email
+  S.screen='sent';
+  render();
+  // Se ci sono foto, dopo 1.5s apre automaticamente il pannello condivisione foto
+  if(S.photos.length>0){
+    setTimeout(()=>sharePhotos(), 1500);
+  }
+}
+
 function clearAll(){
   S.work={customer:'',startTime:null,endTime:null,description:''}; S.photos=[];
   S.screen='main'; clearWork();
@@ -457,10 +467,11 @@ function clearAll(){
 /* ---- ANTEPRIMA ---- */
 function renderPreview(){
   const w=S.work;
+  const hasFoto=S.photos.length>0;
   $('content-slot').innerHTML=`
     <div class="content">
       <p class="screen-title">Anteprima rapportino</p>
-      <p class="screen-sub">Controlla i dati. Se tutto è corretto premi "Invia email", altrimenti torna indietro.</p>
+      <p class="screen-sub">Controlla i dati. Se tutto è corretto premi "Invia".${hasFoto?' L\'email si apre con il testo, poi le foto vengono inviate automaticamente.':''}</p>
       <div class="preview-panel">
         <div class="preview-row"><div class="preview-label">Destinatario</div><div class="preview-val">${esc(S.config.email)}</div></div>
         <div class="preview-row"><div class="preview-label">Oggetto</div><div class="preview-val">Rapportino</div></div>
@@ -469,13 +480,12 @@ function renderPreview(){
         <div class="preview-row"><div class="preview-label">Inizio lavoro</div><div class="preview-val">${fmt(w.startTime)}</div></div>
         <div class="preview-row"><div class="preview-label">Fine lavoro</div><div class="preview-val">${fmt(w.endTime)}</div></div>
         <div class="preview-row"><div class="preview-label">Descrizione</div><div class="preview-val" style="white-space:pre-wrap">${esc(w.description)}</div></div>
-        ${S.photos.length>0?`<div class="preview-row">
+        ${hasFoto?`<div class="preview-row">
           <div class="preview-label">Foto (${S.photos.length})</div>
           <div class="photo-grid" style="margin-top:8px" id="preview-photos"></div>
         </div>`:''}
       </div>
-      <button class="btn btn-primary" onclick="confirmSend()">${IC.send} Invia email</button>
-      ${S.photos.length>0?`<button class="btn btn-outline" onclick="sharePhotos()">${IC.camera} Condividi le ${S.photos.length} foto separatamente</button>`:''}
+      <button class="btn btn-primary" onclick="confirmSend()">${IC.send} Invia rapportino${hasFoto?' + '+S.photos.length+' foto':''}</button>
       <button class="btn btn-outline" onclick="S.screen='main';render()">${IC.back} Torna indietro e modifica</button>
     </div>`;
   setTimeout(()=>{
@@ -487,7 +497,13 @@ function renderPreview(){
 function renderSent(){
   $('content-slot').innerHTML=`
     <div class="content">
-      <p class="screen-title">Email aperta!</p>
+      <p class="screen-title">Rapportino inviato!</p>
+      <p class="screen-sub">${S.photos.length>0
+        ? 'Email aperta nel client di posta. Le foto si stanno aprendo per la condivisione — scegli la stessa email a cui hai inviato il rapportino.'
+        : 'Email aperta nel client di posta. Vuoi azzerare i campi per un nuovo rapportino?'}</p>
+      ${S.photos.length>0?`<button class="btn btn-outline" onclick="sharePhotos()">${IC.camera} Reinvia le foto (se necessario)</button>`:''}
+      <button class="btn btn-primary" onclick="clearAll()">${IC.plus} Nuovo rapportino</button>
+      <button class="btn btn-outline" onclick="S.screen='preview';render()">${IC.back} Torna all'anteprima</button>
       <p class="screen-sub">Il client di posta è stato aperto con il rapportino.${S.photos.length>0?' Usa il pulsante qui sotto per inviare anche le foto via email, WhatsApp o come preferisci.':' Vuoi azzerare i campi per un nuovo rapportino?'}</p>
       ${S.photos.length>0?`<button class="btn btn-primary" onclick="sharePhotos()">${IC.camera} Condividi le ${S.photos.length} foto</button>`:''}
       <button class="btn ${S.photos.length>0?'btn-outline':'btn-primary'}" onclick="clearAll()">${IC.plus} Nuovo rapportino</button>
