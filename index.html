@@ -248,44 +248,32 @@ function renderPhotoGrid(){
   grid.innerHTML=html;
 }
 
-/* ======== EMAIL ======== */
-function buildBody(){
-  const n=S.photos.length;
-  const fotoNote=n>0?`\n\n📎 ${n} foto disponibili nel rapportino`:'';
-  return `Tecnico: ${S.config.techName}\nCliente: ${S.work.customer}\nInizio lavoro: ${fmt(S.work.startTime)}\nFine lavoro: ${fmt(S.work.endTime)}\n\nDescrizione:\n${S.work.description}${fotoNote}`;
+/* ======== EMAIL CON FOTO ALLEGATE (FormSubmit) ======== */
+function b64toFile(b64, i){
+  const arr=b64.split(',');
+  const mime=arr[0].match(/:(.*?);/)[1];
+  const bstr=atob(arr[1]); let n=bstr.length;
+  const u8=new Uint8Array(n); while(n--) u8[n]=bstr.charCodeAt(n);
+  return new File([u8],'foto_'+(i+1)+'.jpg',{type:mime});
 }
 
-// Invia sempre e solo via client email (mailto), senza pannello di scelta
-function sendEmail(){
-  const to=encodeURIComponent(S.config.email);
-  const sub=encodeURIComponent('Rapportino');
-  const body=encodeURIComponent(buildBody());
-  window.location.href=`mailto:${to}?subject=${sub}&body=${body}`;
-}
-
-// Condivisione foto separata (pannello di sistema solo per le foto)
-function b64toFiles(){
-  return S.photos.map((b64,i)=>{
-    const arr=b64.split(',');
-    const mime=arr[0].match(/:(.*?);/)[1];
-    const bstr=atob(arr[1]); let n=bstr.length;
-    const u8=new Uint8Array(n); while(n--) u8[n]=bstr.charCodeAt(n);
-    return new File([u8],`foto_${i+1}.jpg`,{type:mime});
-  });
-}
-
-async function sharePhotos(){
-  if(!S.photos.length) return;
-  try{
-    const files=b64toFiles();
-    if(navigator.canShare && navigator.canShare({files})){
-      await navigator.share({title:'Foto - '+S.work.customer, files});
-    } else {
-      toast('Condivisione foto non supportata da questo browser');
-    }
-  }catch(e){
-    if(e.name!=='AbortError') toast('Errore nella condivisione delle foto');
-  }
+async function sendEmail(){
+  const fd = new FormData();
+  fd.append('_subject',    'Rapportino - ' + S.work.customer);
+  fd.append('_template',   'table');
+  fd.append('_captcha',    'false');
+  fd.append('Tecnico',     S.config.techName);
+  fd.append('Cliente',     S.work.customer);
+  fd.append('Inizio',      fmt(S.work.startTime));
+  fd.append('Fine',        fmt(S.work.endTime));
+  fd.append('Descrizione', S.work.description);
+  S.photos.forEach((b64,i) => fd.append('foto_'+(i+1), b64toFile(b64,i)));
+  const res = await fetch(
+    'https://formsubmit.co/ajax/' + S.config.email,
+    {method:'POST', body:fd, headers:{'Accept':'application/json'}}
+  );
+  const data = await res.json();
+  if(!data.success) throw new Error('Invio fallito');
 }
 
 /* ======== RENDER ======== */
@@ -448,13 +436,25 @@ function endWork(){
 }
 function goPreview(){ S.screen='preview'; render(); }
 
-function confirmSend(){
-  sendEmail();          // apre client email
-  S.screen='sent';
-  render();
-  // Se ci sono foto, dopo 1.5s apre automaticamente il pannello condivisione foto
-  if(S.photos.length>0){
-    setTimeout(()=>sharePhotos(), 1500);
+async function confirmSend(){
+  // Mostra schermata invio in corso
+  $('content-slot').innerHTML=`
+    <div class="content" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;gap:16px">
+      <div class="spinner" style="width:36px;height:36px;border:3px solid rgba(0,0,0,.15);border-top-color:var(--text);border-radius:50%;animation:spin .7s linear infinite"></div>
+      <p style="font-size:16px;color:var(--text2)">Invio in corso${S.photos.length>0?' con '+S.photos.length+' foto...':'...'}</p>
+    </div>`;
+  try{
+    await sendEmail();
+    S.screen='sent';
+    render();
+  }catch(e){
+    $('content-slot').innerHTML=`
+      <div class="content">
+        <p class="screen-title">Errore di invio</p>
+        <p class="screen-sub" style="color:var(--red);margin-bottom:20px">Non è stato possibile inviare l'email. Controlla la connessione internet e riprova.<br><br>Nota: la prima volta che usi questa email, FormSubmit manda una conferma alla tua casella — clicca il link che ricevi e poi reinvia.</p>
+        <button class="btn btn-primary" onclick="confirmSend()">Riprova</button>
+        <button class="btn btn-outline" onclick="S.screen='preview';render()">Torna all'anteprima</button>
+      </div>`;
   }
 }
 
@@ -485,7 +485,7 @@ function renderPreview(){
           <div class="photo-grid" style="margin-top:8px" id="preview-photos"></div>
         </div>`:''}
       </div>
-      <button class="btn btn-primary" onclick="confirmSend()">${IC.send} Invia rapportino${hasFoto?' + '+S.photos.length+' foto':''}</button>
+      <button class="btn btn-primary" onclick="confirmSend()">${IC.send} Invia rapportino${hasFoto?' con '+S.photos.length+' foto allegate':''}</button>
       <button class="btn btn-outline" onclick="S.screen='main';render()">${IC.back} Torna indietro e modifica</button>
     </div>`;
   setTimeout(()=>{
@@ -497,16 +497,9 @@ function renderPreview(){
 function renderSent(){
   $('content-slot').innerHTML=`
     <div class="content">
-      <p class="screen-title">Rapportino inviato!</p>
-      <p class="screen-sub">${S.photos.length>0
-        ? 'Email aperta nel client di posta. Le foto si stanno aprendo per la condivisione — scegli la stessa email a cui hai inviato il rapportino.'
-        : 'Email aperta nel client di posta. Vuoi azzerare i campi per un nuovo rapportino?'}</p>
-      ${S.photos.length>0?`<button class="btn btn-outline" onclick="sharePhotos()">${IC.camera} Reinvia le foto (se necessario)</button>`:''}
+      <p class="screen-title">✅ Rapportino inviato!</p>
+      <p class="screen-sub">Email inviata con successo${S.photos.length>0?' con '+S.photos.length+' foto allegate':''} a <strong>${esc(S.config.email)}</strong>.</p>
       <button class="btn btn-primary" onclick="clearAll()">${IC.plus} Nuovo rapportino</button>
-      <button class="btn btn-outline" onclick="S.screen='preview';render()">${IC.back} Torna all'anteprima</button>
-      <p class="screen-sub">Il client di posta è stato aperto con il rapportino.${S.photos.length>0?' Usa il pulsante qui sotto per inviare anche le foto via email, WhatsApp o come preferisci.':' Vuoi azzerare i campi per un nuovo rapportino?'}</p>
-      ${S.photos.length>0?`<button class="btn btn-primary" onclick="sharePhotos()">${IC.camera} Condividi le ${S.photos.length} foto</button>`:''}
-      <button class="btn ${S.photos.length>0?'btn-outline':'btn-primary'}" onclick="clearAll()">${IC.plus} Nuovo rapportino</button>
       <button class="btn btn-outline" onclick="S.screen='preview';render()">${IC.back} Torna all'anteprima</button>
     </div>`;
 }
