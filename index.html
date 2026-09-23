@@ -304,7 +304,7 @@ function renderTopbar(){
     <div class="topbar">
       <div class="topbar-header">
         <span class="topbar-title">Rapportini Tecnici</span>
-        <span class="topbar-version">v1.3</span>
+        <span class="topbar-version">v1.4</span>
       </div>
       <div class="topbar-tabs">
         <button class="tab ${S.tab==='lavoro'?'active':''}" onclick="switchTab('lavoro')">${IC.clipboard} Lavoro</button>
@@ -462,19 +462,20 @@ function endWork(){
 }
 function goPreview(){ S.screen='preview'; render(); }
 
-async function confirmSend(){
-  // Mostra schermata invio in corso
-  $('content-slot').innerHTML=`
-    <div class="content" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;gap:16px">
-      <div class="spinner" style="width:36px;height:36px;border:3px solid rgba(0,0,0,.15);border-top-color:var(--text);border-radius:50%;animation:spin .7s linear infinite"></div>
-      <p style="font-size:16px;color:var(--text2)">Invio in corso${S.photos.length>0?' con '+S.photos.length+' foto...':'...'}</p>
-    </div>`;
-  sendEmail();
-  S.screen='sent';
-  render();
-  if(S.photos.length>0){
-    setTimeout(()=>sharePhotos(), 1500);
+function confirmSend(){
+  const hadPhotos = S.photos.length > 0;
+  sendEmail();                   // apre subito il client email
+  if(hadPhotos){
+    setTimeout(()=>sharePhotos(), 1200);  // apre pannello foto dopo 1.2s
   }
+  // Pulisce subito tutto: al prossimo avvio l'app parte sempre da zero
+  clearWork();
+  S.work   = {customer:'',startTime:null,endTime:null,description:''};
+  S.photos = [];
+  S.screen = 'main';
+  document.removeEventListener('click', onDocClick);
+  render();
+  toast(hadPhotos ? 'Email aperta + foto in condivisione' : 'Email aperta');
 }
 
 function clearAll(){
